@@ -200,7 +200,7 @@ copy external\mike\backend\.env.example external\mike\backend\.env
 npm run dev --prefix external/mike/backend
 ```
 
-For the hackathon demo without Supabase/Mike credentials, run the included
+Sir, For the local demo without Supabase/Mike credentials, pls run the included
 Mike-compatible adapter instead:
 
 ```bash
