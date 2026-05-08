@@ -7,7 +7,7 @@ An always-on OpenClaw agent that monitors TOS updates, privacy policy changes, a
 [GITHUB REPO PERMALINK](https://github.com/axushgp/SilentWitness)\
 [PPT LINK](https://docs.google.com/presentation/d/1z1OGb6tLODgFdZf7GlQUzgHOImgapDm3pRPOicn9LRQ/edit?usp=sharing)\
 [AI DISCLOSURE](https://docs.google.com/document/d/1AC6hUf9N87qQfKxpL-CnC3KtWluiMi69A5mpDoeWZn4/edit?usp=sharing)\
-[DEMO VIDEO]()\
+[DEMO VIDEO]()
 
 ---
 
