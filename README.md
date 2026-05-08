@@ -4,10 +4,10 @@
 
 An always-on OpenClaw agent that monitors TOS updates, privacy policy changes, and contract revisions across 50+ services - classifies severity, scores legal risk across four axes, maps violations against India's DPDP Act 2023, and delivers plain-English alerts on Telegram before the change takes effect.
 
-[GITHUB REPO PERMALINK](https://github.com/axushgp/SilentWitness)
-[PPT LINK](https://docs.google.com/presentation/d/1z1OGb6tLODgFdZf7GlQUzgHOImgapDm3pRPOicn9LRQ/edit?usp=sharing)
-[AI DISCLOSURE](https://docs.google.com/document/d/1AC6hUf9N87qQfKxpL-CnC3KtWluiMi69A5mpDoeWZn4/edit?usp=sharing)
-[DEMO VIDEO]()
+[GITHUB REPO PERMALINK](https://github.com/axushgp/SilentWitness)\
+[PPT LINK](https://docs.google.com/presentation/d/1z1OGb6tLODgFdZf7GlQUzgHOImgapDm3pRPOicn9LRQ/edit?usp=sharing)\
+[AI DISCLOSURE](https://docs.google.com/document/d/1AC6hUf9N87qQfKxpL-CnC3KtWluiMi69A5mpDoeWZn4/edit?usp=sharing)\
+[DEMO VIDEO]()\
 
 ---
 
