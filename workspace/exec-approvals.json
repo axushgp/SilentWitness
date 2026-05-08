@@ -1,0 +1,18 @@
+{
+  "default": "deny",
+  "allowlist": [
+    "python3",
+    "cat",
+    "ls",
+    "grep",
+    "curl"
+  ],
+  "denylist": [
+    "rm -rf",
+    "sudo",
+    "git push",
+    "wget",
+    "chmod 777"
+  ],
+  "fallback": "deny"
+}
