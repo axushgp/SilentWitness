@@ -19,7 +19,7 @@ Every time you tap "I AGREE" on a new app, you enter a legal contract. You almos
 - 97 minutes - time it would take to read all TOS for services used in one average day
 - Rs.18,000 Cr lost annually in India to subscription traps
 - 0.06% of users read a privacy policy before clicking agree
-- In 2022, PayPal quietly added a Rs.2,500 fine for "misinformation" - caught only because one journalist happened to notice
+- In 2022, PayPal quietly added a $2,500 fine for "misinformation" - caught only because one journalist happened to notice
 
 No tool exists today that monitors these continuously, autonomously, and in plain language. Until now.
 
