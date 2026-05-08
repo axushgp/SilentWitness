@@ -4,6 +4,11 @@
 
 An always-on OpenClaw agent that monitors TOS updates, privacy policy changes, and contract revisions across 50+ services - classifies severity, scores legal risk across four axes, maps violations against India's DPDP Act 2023, and delivers plain-English alerts on Telegram before the change takes effect.
 
+[GITHUB REPO PERMALINK](https://github.com/axushgp/SilentWitness)
+[PPT LINK](https://docs.google.com/presentation/d/1z1OGb6tLODgFdZf7GlQUzgHOImgapDm3pRPOicn9LRQ/edit?usp=sharing)
+[AI DISCLOSURE](https://docs.google.com/document/d/1AC6hUf9N87qQfKxpL-CnC3KtWluiMi69A5mpDoeWZn4/edit?usp=sharing)
+[DEMO VIDEO]()
+
 ---
 
 ## The Problem
@@ -274,26 +279,8 @@ Every detected change is scored 0-100 across four axes:
 
 ---
 
-## Demo Script (for video)
-
-1. Show `openclaw` TUI running - explain Pi agent architecture
-2. Show `watchlist.md` - 6 services being monitored
-3. Run `python3 simulate_change.py spotify` live
-4. Run `python3 silent_witness.py` - show terminal output with severity and risk score
-5. Show Telegram alert arriving on phone
-6. Send a PDF NDA to Telegram bot - show analysis reply
-7. Type `/stats` - show vault metrics
-
----
-
 ## License
 
 MIT
 
 ---
-
-## Built for
-
-Samsung PRISM OpenClaw Hackathon 2026 - Theme 3: Productivity Platforms
-RV College of Engineering, Bangalore
-Ayush Gupta | 1RV24ET068
