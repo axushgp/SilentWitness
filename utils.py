@@ -8,6 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 SNAPSHOTS_DIR = ROOT / "snapshots"
 REPORTS_DIR = SNAPSHOTS_DIR / "reports"
+UPLOADS_DIR = ROOT / "uploads"
 WATCHLIST_PATH = SNAPSHOTS_DIR / "watchlist.md"
 VAULT_PATH = ROOT / "vault.db"
 MEMORY_DIR = ROOT / "memory"
@@ -119,6 +120,11 @@ def json_ready_row(row) -> dict:
             data["mike_clauses"] = json.loads(data["mike_clauses"])
         except json.JSONDecodeError:
             data["mike_clauses"] = []
+    if isinstance(data.get("clauses"), str):
+        try:
+            data["clauses"] = json.loads(data["clauses"])
+        except json.JSONDecodeError:
+            data["clauses"] = []
     if isinstance(data.get("details"), str):
         try:
             data["details"] = json.loads(data["details"])

@@ -1,15 +1,19 @@
 from __future__ import annotations
 
 import argparse
+import cgi
 import json
+import mimetypes
 import threading
 import time
+from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
 
+from contract_analyzer import analyze_pdf
 from simulate_change import simulate
 from silent_witness import run_heartbeat
-from utils import json_ready_row, load_dotenv, read_watchlist
+from utils import REPORTS_DIR, UPLOADS_DIR, json_ready_row, load_dotenv, read_watchlist, slug
 from vault import all_changes, init_db, recent_contracts, recent_runs, stats
 
 
@@ -67,6 +71,15 @@ INDEX_HTML = """<!doctype html>
     button { cursor: pointer; }
     button.primary { background: var(--blue); color: #09111a; border-color: var(--blue); font-weight: 700; }
     button.danger { background: var(--red); color: #21070b; border-color: var(--red); font-weight: 700; }
+    input[type="file"] {
+      width: min(100%, 360px);
+      border: 1px solid var(--line);
+      background: var(--panel-2);
+      color: var(--text);
+      border-radius: 6px;
+      padding: 8px;
+      min-height: 40px;
+    }
     .metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 20px; }
     .metric { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px; min-width: 0; }
     .metric span { display: block; color: var(--muted); font-size: 13px; }
@@ -89,6 +102,14 @@ INDEX_HTML = """<!doctype html>
     .watchlist { display: grid; gap: 8px; }
     .service { display: flex; justify-content: space-between; gap: 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
     .service span { color: var(--muted); overflow-wrap: anywhere; }
+    .upload { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
+    .upload form { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .upload-result { margin-top: 12px; color: var(--muted); font-size: 14px; white-space: pre-wrap; }
+    .clause-list { display: grid; gap: 10px; margin-top: 12px; }
+    .clause-item { border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: #151a21; }
+    .clause-item strong { display: block; margin-bottom: 5px; color: var(--text); }
+    .clause-item p { margin: 6px 0 0; color: var(--muted); }
+    a.download { display: inline-flex; align-items: center; min-height: 36px; margin-top: 10px; padding: 0 12px; border-radius: 6px; background: var(--green); color: #07130c; text-decoration: none; font-weight: 800; }
     @media (max-width: 860px) {
       .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .grid { grid-template-columns: 1fr; }
@@ -126,6 +147,14 @@ INDEX_HTML = """<!doctype html>
         </table>
       </section>
       <div class="side">
+        <section class="upload">
+          <h2>Analyze PDF</h2>
+          <form id="pdfForm">
+            <input id="pdfFile" name="pdf" type="file" accept="application/pdf,.pdf" required>
+            <button class="primary" type="submit">Upload PDF</button>
+          </form>
+          <div id="uploadResult" class="upload-result"></div>
+        </section>
         <section>
           <h2>Watchlist</h2>
           <div id="watchlist" class="watchlist"></div>
@@ -138,6 +167,7 @@ INDEX_HTML = """<!doctype html>
     </div>
   </main>
   <script>
+    const el = (id) => document.getElementById(id);
     async function api(path, options) {
       const response = await fetch(path, options);
       if (!response.ok) throw new Error(await response.text());
@@ -146,24 +176,60 @@ INDEX_HTML = """<!doctype html>
     function pill(value) { return `<span class="pill ${value}">${value || "n/a"}</span>`; }
     async function refresh() {
       const data = await api("/api/status");
-      mChanges.textContent = data.stats.changes;
-      mCritical.textContent = data.stats.critical;
-      mContracts.textContent = data.stats.contracts;
-      mRuns.textContent = data.stats.runs;
-      service.innerHTML = data.watchlist.map(item => `<option value="${item.service}">${item.service}</option>`).join("");
-      watchlist.innerHTML = data.watchlist.map(item => `<div class="service"><strong>${item.service}</strong><span>${item.url}</span></div>`).join("");
-      changes.innerHTML = data.changes.map(row => `<tr>
+      el("mChanges").textContent = data.stats.changes;
+      el("mCritical").textContent = data.stats.critical;
+      el("mContracts").textContent = data.stats.contracts;
+      el("mRuns").textContent = data.stats.runs;
+      el("service").innerHTML = data.watchlist.map(item => `<option value="${item.service}">${item.service}</option>`).join("");
+      el("watchlist").innerHTML = data.watchlist.map(item => `<div class="service"><strong>${item.service}</strong><span>${item.url}</span></div>`).join("");
+      el("changes").innerHTML = data.changes.map(row => `<tr>
         <td>${row.detected_at || ""}</td>
         <td>${row.service || ""}</td>
         <td>${pill(row.severity)}</td>
         <td>${row.risk_score ?? ""}</td>
         <td>${row.summary || ""}</td>
       </tr>`).join("") || `<tr><td colspan="5">No changes logged yet.</td></tr>`;
-      runs.textContent = JSON.stringify(data.runs[0] || {}, null, 2);
+      const contractsText = data.contracts.length ? "\\n\\nLatest PDF: " + JSON.stringify(data.contracts[0], null, 2) : "";
+      el("runs").textContent = JSON.stringify(data.runs[0] || {}, null, 2) + contractsText;
     }
-    run.onclick = async () => { runs.textContent = "Running heartbeat..."; await api("/api/run", { method: "POST" }); await refresh(); };
-    simulate.onclick = async () => { await api(`/api/simulate?service=${encodeURIComponent(service.value || "spotify")}`, { method: "POST" }); await refresh(); };
-    refresh.onclick = refresh;
+    el("run").onclick = async () => {
+      el("runs").textContent = "Running heartbeat...";
+      try { await api("/api/run", { method: "POST" }); await refresh(); }
+      catch (error) { el("runs").textContent = error.message; }
+    };
+    el("simulate").onclick = async () => {
+      try { await api(`/api/simulate?service=${encodeURIComponent(el("service").value || "spotify")}`, { method: "POST" }); await refresh(); }
+      catch (error) { el("runs").textContent = error.message; }
+    };
+    el("refresh").onclick = refresh;
+    el("pdfForm").onsubmit = async (event) => {
+      event.preventDefault();
+      const file = el("pdfFile").files[0];
+      if (!file) return;
+      el("uploadResult").textContent = "Analyzing PDF with Mike...";
+      const body = new FormData();
+      body.append("pdf", file);
+      try {
+        const result = await api("/api/upload-pdf", { method: "POST", body });
+        const clauses = (result.clauses || []).map((clause) => `
+          <div class="clause-item">
+            <strong>${clause.clause || "Clause"} - ${clause.severity || "REVIEW"} - ${clause.risk_points || "n/a"} pts</strong>
+            <p>${clause.after || ""}</p>
+            <p>${clause.legal_implication || ""}</p>
+          </div>
+        `).join("");
+        const download = result.download_url ? `<a class="download" href="${result.download_url}">Download DOCX report</a>` : "";
+        el("uploadResult").innerHTML = `
+          Risk: ${result.severity} (${result.risk_score}/100)<br>
+          ${result.summary}<br>
+          ${download}
+          <div class="clause-list">${clauses}</div>
+        `;
+        await refresh();
+      } catch (error) {
+        el("uploadResult").textContent = error.message;
+      }
+    };
     refresh();
     setInterval(refresh, 15000);
   </script>
@@ -202,6 +268,9 @@ class Handler(BaseHTTPRequestHandler):
                 }
             )
             return
+        if parsed.path == "/api/download":
+            self._handle_download(parsed)
+            return
         self.send_error(404)
 
     def do_POST(self) -> None:
@@ -215,7 +284,68 @@ class Handler(BaseHTTPRequestHandler):
             service = query.get("service", ["spotify"])[0]
             self._json({"service": service, "path": simulate(service)})
             return
+        if parsed.path == "/api/upload-pdf":
+            self._handle_pdf_upload()
+            return
         self.send_error(404)
+
+    def _handle_pdf_upload(self) -> None:
+        content_type = self.headers.get("Content-Type", "")
+        if "multipart/form-data" not in content_type:
+            self._json({"error": "Expected multipart/form-data upload."}, 400)
+            return
+
+        form = cgi.FieldStorage(
+            fp=self.rfile,
+            headers=self.headers,
+            environ={
+                "REQUEST_METHOD": "POST",
+                "CONTENT_TYPE": content_type,
+            },
+        )
+        file_item = form["pdf"] if "pdf" in form else None
+        if file_item is None or not getattr(file_item, "filename", ""):
+            self._json({"error": "Upload a PDF file in the 'pdf' field."}, 400)
+            return
+
+        filename = slug(file_item.filename.rsplit(".", 1)[0]) + ".pdf"
+        UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+        path = UPLOADS_DIR / filename
+        with path.open("wb") as handle:
+            handle.write(file_item.file.read())
+
+        try:
+            result = analyze_pdf(path, "dashboard")
+            if result.get("report_path"):
+                result["download_url"] = "/api/download?path=" + quote(str(result["report_path"]))
+            self._json(result)
+        except Exception as exc:
+            self._json({"error": str(exc)}, 500)
+
+    def _handle_download(self, parsed) -> None:
+        query = parse_qs(parsed.query)
+        raw_path = unquote(query.get("path", [""])[0])
+        if not raw_path:
+            self.send_error(400, "Missing path")
+            return
+
+        requested = Path(raw_path).resolve()
+        allowed_roots = [REPORTS_DIR.resolve(), UPLOADS_DIR.resolve()]
+        if not any(requested == root or root in requested.parents for root in allowed_roots):
+            self.send_error(403, "Refusing to download files outside report/upload folders")
+            return
+        if not requested.exists() or not requested.is_file():
+            self.send_error(404, "File not found")
+            return
+
+        body = requested.read_bytes()
+        content_type = mimetypes.guess_type(requested.name)[0] or "application/octet-stream"
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Disposition", f'attachment; filename="{requested.name}"')
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def log_message(self, format: str, *args) -> None:
         print(f"dashboard: {format % args}")

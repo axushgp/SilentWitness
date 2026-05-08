@@ -48,15 +48,121 @@ def fallback_clauses(diff_text: str) -> list[dict[str, str]]:
     ]
 
 
-def _docx_xml(title: str, clauses: list[dict[str, str]]) -> str:
-    lines = [title, "", "Clause Review"]
+CONTRACT_PATTERNS = [
+    (
+        "Confidentiality / non-disclosure",
+        ("confidential", "non-disclosure", "nondisclosure", "disclose", "recipient"),
+        "Restricts disclosure of confidential information. Check scope, exclusions, and permitted recipients.",
+        16,
+    ),
+    (
+        "Data sharing / processors",
+        ("personal data", "third-party", "third party", "processor", "subprocessor", "share data"),
+        "Allows data handling or sharing. Review consent, security duties, cross-border processing, and processor controls.",
+        18,
+    ),
+    (
+        "Penalty / liquidated damages",
+        ("penalty", "liquidated damages", "fine", "service fee", "processing fee"),
+        "Creates financial exposure. Verify whether the amount is reasonable, capped, and enforceable.",
+        18,
+    ),
+    (
+        "Indemnity",
+        ("indemnify", "indemnification", "hold harmless", "defend"),
+        "May shift legal costs and third-party claims. Look for caps, control of defense, and carve-outs.",
+        16,
+    ),
+    (
+        "Limitation of liability",
+        ("limitation of liability", "liability shall not exceed", "consequential damages", "indirect damages"),
+        "Limits recovery if something goes wrong. Check whether confidentiality, IP, data breach, and payment claims are excluded.",
+        14,
+    ),
+    (
+        "IP ownership / license",
+        ("intellectual property", "ip ownership", "license", "work product", "derivative"),
+        "May affect ownership or use of created materials. Confirm assignment, retained rights, and license duration.",
+        16,
+    ),
+    (
+        "Arbitration / dispute resolution",
+        ("arbitration", "sole arbitrator", "dispute resolution", "venue", "jurisdiction"),
+        "Changes how disputes are handled. Check seat, venue, governing law, costs, and injunctive relief carve-outs.",
+        14,
+    ),
+    (
+        "Termination / survival",
+        ("terminate", "termination", "survive", "survival", "expiration"),
+        "Affects exit rights and post-termination duties. Check notice period and survival of confidentiality/payment terms.",
+        10,
+    ),
+    (
+        "Non-compete / non-solicit",
+        ("non-compete", "non compete", "non-solicit", "non solicit", "solicit employees"),
+        "Restricts future business activity. Review duration, geography, and enforceability.",
+        15,
+    ),
+]
+
+
+def _snippets(text: str, terms: tuple[str, ...], limit: int = 2) -> list[str]:
+    compact = re.sub(r"\s+", " ", text).strip()
+    snippets: list[str] = []
+    for term in terms:
+        match = re.search(rf".{{0,130}}\b{re.escape(term)}\b.{{0,180}}", compact, flags=re.I)
+        if match:
+            snippet = match.group(0).strip()
+            if snippet not in snippets:
+                snippets.append(snippet)
+        if len(snippets) >= limit:
+            break
+    return snippets
+
+
+def contract_clauses(text: str) -> list[dict[str, str]]:
+    clauses: list[dict[str, str]] = []
+    for name, terms, implication, points in CONTRACT_PATTERNS:
+        snippets = _snippets(text, terms)
+        if not snippets:
+            continue
+        severity = "HIGH" if points >= 16 else "MEDIUM" if points >= 12 else "LOW"
+        clauses.append(
+            {
+                "clause": name,
+                "before": "Contract document",
+                "after": "\n\n".join(snippets),
+                "legal_implication": implication,
+                "page_citation": "Extracted PDF text",
+                "severity": severity,
+                "risk_points": str(points),
+            }
+        )
+    if clauses:
+        return clauses
+    preview = re.sub(r"\s+", " ", text).strip()[:500]
+    return [
+        {
+            "clause": "General contract review",
+            "before": "Contract document",
+            "after": preview or "No readable clause text found.",
+            "legal_implication": "No high-signal risk clause was detected by the local reviewer. Manual review is still recommended.",
+            "page_citation": "Extracted PDF text",
+            "severity": "LOW",
+            "risk_points": "8",
+        }
+    ]
+
+
+def _docx_xml(title: str, clauses: list[dict[str, str]], summary: str | None = None) -> str:
+    lines = [title, "", summary or "Clause Review", ""]
     for index, clause in enumerate(clauses, start=1):
         lines.extend(
             [
                 "",
                 f"{index}. {clause.get('clause', 'Clause')}",
-                f"Before: {clause.get('before', '')}",
-                f"After: {clause.get('after', '')}",
+                f"Risk: {clause.get('severity', 'REVIEW')} ({clause.get('risk_points', 'n/a')} pts)",
+                f"Extract: {clause.get('after', '')}",
                 f"Legal implication: {clause.get('legal_implication', clause.get('implication', ''))}",
                 f"Citation: {clause.get('page_citation', clause.get('citation', 'Policy snapshot'))}",
             ]
@@ -70,7 +176,7 @@ def _docx_xml(title: str, clauses: list[dict[str, str]]) -> str:
 </w:document>"""
 
 
-def write_docx(title: str, clauses: list[dict[str, str]], path: Path) -> None:
+def write_docx(title: str, clauses: list[dict[str, str]], path: Path, summary: str | None = None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     content_types = """<?xml version="1.0" encoding="UTF-8"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -85,7 +191,7 @@ def write_docx(title: str, clauses: list[dict[str, str]], path: Path) -> None:
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as docx:
         docx.writestr("[Content_Types].xml", content_types)
         docx.writestr("_rels/.rels", rels)
-        docx.writestr("word/document.xml", _docx_xml(title, clauses))
+        docx.writestr("word/document.xml", _docx_xml(title, clauses, summary))
 
 
 def _post_json(url: str, payload: dict, timeout: int = 18) -> dict:
@@ -115,6 +221,8 @@ def _normalise_clauses(raw: object) -> list[dict[str, str]]:
                 "after": str(item.get("after") or item.get("after_text") or ""),
                 "legal_implication": str(item.get("legal_implication") or item.get("implication") or ""),
                 "page_citation": str(item.get("page_citation") or item.get("citation") or "Policy snapshot"),
+                "severity": str(item.get("severity") or "REVIEW"),
+                "risk_points": str(item.get("risk_points") or item.get("points") or "8"),
             }
         )
     return clauses
@@ -155,16 +263,26 @@ def analyze_contract_text(filename: str, text: str) -> MikeResult:
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     safe_name = re.sub(r"[^a-zA-Z0-9_-]+", "-", Path(filename).stem).strip("-") or "contract"
     report_path = REPORTS_DIR / f"contract_{safe_name}_{date.today().isoformat()}.docx"
-    diff_text = "\n".join(f"+{line}" for line in text.splitlines()[:80] if line.strip())
+    local_clauses = contract_clauses(text)
     try:
         response = _post_json(
             "http://localhost:3001/api/analyze",
             {"document": text[:12000], "mode": "contract_review", "service": filename},
         )
-        clauses = _normalise_clauses(response) or fallback_clauses(diff_text)
-        write_docx(f"Silent Witness Contract Review - {filename}", clauses, report_path)
+        clauses = _normalise_clauses(response) or local_clauses
+        write_docx(
+            f"Silent Witness Contract Review - {filename}",
+            clauses,
+            report_path,
+            "Mike tabular extraction with clause-level risk findings.",
+        )
         return MikeResult(clauses, str(report_path), "mike")
     except (OSError, urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
-        clauses = fallback_clauses(diff_text)
-        write_docx(f"Silent Witness Local Contract Review - {filename}", clauses, report_path)
+        clauses = local_clauses
+        write_docx(
+            f"Silent Witness Local Contract Review - {filename}",
+            clauses,
+            report_path,
+            "Local clause extraction because Mike backend was unavailable.",
+        )
         return MikeResult(clauses, str(report_path), "local-fallback", str(exc))
