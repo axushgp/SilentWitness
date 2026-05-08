@@ -1,0 +1,7 @@
+# Silent Witness runs with the Python standard library for local demos.
+# Optional production integrations:
+httpx
+beautifulsoup4
+python-telegram-bot
+pymupdf
+python-dotenv

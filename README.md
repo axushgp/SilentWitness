@@ -7,7 +7,7 @@ An always-on OpenClaw agent that monitors TOS updates, privacy policy changes, a
 [GITHUB REPO PERMALINK](https://github.com/axushgp/SilentWitness)\
 [PPT LINK](https://docs.google.com/presentation/d/1z1OGb6tLODgFdZf7GlQUzgHOImgapDm3pRPOicn9LRQ/edit?usp=sharing)\
 [AI DISCLOSURE](https://docs.google.com/document/d/1AC6hUf9N87qQfKxpL-CnC3KtWluiMi69A5mpDoeWZn4/edit?usp=sharing)\
-[DEMO VIDEO]()
+[DEMO VIDEO](https://notepad.link/TeamVOX)
 
 ---
 
@@ -154,7 +154,7 @@ ollama pull llama3.2:1b
 ### Step 3 - Install Python dependencies
 
 ```bash
-pip3 install httpx beautifulsoup4 python-telegram-bot pymupdf python-dotenv --break-system-packages
+pip3 install -r requirements.txt
 ```
 
 ### Step 4 - Clone and configure
@@ -169,6 +169,13 @@ Set your credentials:
 ```bash
 export TELEGRAM_TOKEN="your_bot_token"
 export TELEGRAM_CHAT_ID="your_chat_id"
+```
+
+On Windows PowerShell you can also create a local `.env` file:
+
+```env
+TELEGRAM_TOKEN=your_bot_token
+TELEGRAM_CHAT_ID=your_chat_id
 ```
 
 Get your chat ID: message your bot once, then open `https://api.telegram.org/bot<TOKEN>/getUpdates` and find the `id` field under `chat`.
@@ -186,22 +193,50 @@ Copy the SOUL.md, HEARTBEAT.md, and all SKILL.md files from the `.openclaw/` fol
 ### Step 6 - Install Mike OSS (optional, for tabular legal analysis)
 
 ```bash
-git clone https://github.com/willchen96/mike ~/mike
-npm install --prefix ~/mike/backend
-cp ~/mike/backend/.env.example ~/mike/backend/.env
+git clone https://github.com/willchen96/mike external/mike
+npm install --prefix external/mike/backend
+copy external\mike\backend\.env.example external\mike\backend\.env
 # Fill in your Supabase and LLM API keys in .env
-npm run dev --prefix ~/mike/backend
+npm run dev --prefix external/mike/backend
 ```
+
+For the hackathon demo without Supabase/Mike credentials, run the included
+Mike-compatible adapter instead:
+
+```bash
+python mike_compat_server.py
+```
+
+It exposes the `/api/analyze` and `/api/export/docx` endpoints expected by
+Silent Witness at `localhost:3001`.
 
 ---
 
 ## Usage
+
+### Run the dashboard
+
+```bash
+python dashboard.py --schedule
+```
+
+Open `http://127.0.0.1:8765`. The dashboard shows watchlist status, vault metrics,
+recent changes, contract uploads, heartbeat runs, and buttons for the live demo:
+
+- `Inject critical demo` writes a Spotify CRITICAL policy change
+- `Run heartbeat` executes crawl -> diff -> classify -> risk -> DPDP -> Mike -> Telegram
+- `Refresh` reloads SQLite vault state
 
 ### Run a manual heartbeat
 
 ```bash
 python3 silent_witness.py
 ```
+
+The heartbeat uses `httpx` and BeautifulSoup when installed. If live network access
+is unavailable, it falls back to existing local snapshots so the demo still runs.
+Severity classification uses local Ollama `llama3.2:1b` when available, then falls
+back to the same deterministic rubric in `skills/severity-classifier/SKILL.md`.
 
 ### Simulate a CRITICAL change for demo
 
@@ -210,12 +245,19 @@ python3 simulate_change.py spotify
 python3 silent_witness.py
 ```
 
+CRITICAL findings are sent to Mike OSS at `http://localhost:3001/api/analyze`.
+If Mike is not running, Silent Witness writes a local `.docx` clause report to
+`snapshots/reports/` so the pipeline never blocks.
+
 ### Run the Telegram bot (PDF ingestion + queries)
 
 ```bash
 pkill -f openclaw   # stop OpenClaw to avoid bot conflict
 python3 bot.py
 ```
+
+If `TELEGRAM_TOKEN` is configured, `bot.py` starts Telegram polling. Without a token,
+it prints local `/history` and `/stats` output for development.
 
 ### Telegram commands
 
@@ -232,6 +274,12 @@ openclaw
 ```
 
 The heartbeat runs every 2 hours automatically per `HEARTBEAT.md`.
+
+For a standalone Python scheduler without OpenClaw:
+
+```bash
+python3 heartbeat_scheduler.py
+```
 
 ---
 
