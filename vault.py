@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from utils import VAULT_PATH
 
@@ -65,13 +65,14 @@ def init_db() -> None:
             )
             """
         )
+        cutoff = (datetime.now() - timedelta(hours=1)).isoformat(timespec="seconds")
         con.execute(
             """
             UPDATE heartbeat_runs
             SET status = 'interrupted', finished_at = COALESCE(finished_at, ?)
-            WHERE status = 'running'
+            WHERE status = 'running' AND started_at < ?
             """,
-            (datetime.now().isoformat(timespec="seconds"),),
+            (datetime.now().isoformat(timespec="seconds"), cutoff),
         )
 
 

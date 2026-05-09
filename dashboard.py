@@ -106,10 +106,25 @@ INDEX_HTML = """<!doctype html>
     .upload form { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
     .upload-result { margin-top: 12px; color: var(--muted); font-size: 14px; white-space: pre-wrap; }
     .clause-list { display: grid; gap: 10px; margin-top: 12px; }
-    .clause-item { border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: #151a21; }
-    .clause-item strong { display: block; margin-bottom: 5px; color: var(--text); }
-    .clause-item p { margin: 6px 0 0; color: var(--muted); }
+    .clause-item { border: 1px solid var(--line); border-radius: 8px; padding: 12px; background: #151a21; }
+    .clause-item strong { display: block; margin-bottom: 8px; color: var(--text); font-size: 15px; }
+    .clause-item .meta { display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+    .clause-item .severity { padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+    .clause-item .severity.HIGH { background: rgba(255,93,115,.3); color: #ffb6c1; }
+    .clause-item .severity.MEDIUM { background: rgba(244,185,66,.3); color: #ffdc8a; }
+    .clause-item .severity.LOW { background: rgba(88,214,141,.3); color: #9bf0bd; }
+    .clause-item .risk-points { color: var(--muted); font-size: 12px; }
+    .clause-item .source { color: var(--blue); font-size: 12px; font-weight: 600; }
+    .clause-item .diff { margin-top: 8px; }
+    .clause-item .before { background: rgba(255,93,115,.1); border-left: 3px solid var(--red); padding: 6px 8px; margin-bottom: 4px; font-size: 13px; }
+    .clause-item .after { background: rgba(88,214,141,.1); border-left: 3px solid var(--green); padding: 6px 8px; margin-bottom: 4px; font-size: 13px; }
+    .clause-item .implication { background: rgba(107,114,128,.1); padding: 8px; border-radius: 4px; margin-top: 8px; font-size: 13px; color: var(--text); }
+    .clause-item .citation { color: var(--muted); font-size: 12px; margin-top: 4px; }
     a.download { display: inline-flex; align-items: center; min-height: 36px; margin-top: 10px; padding: 0 12px; border-radius: 6px; background: var(--green); color: #07130c; text-decoration: none; font-weight: 800; }
+    .status-card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
+    .status-card dl { display: grid; grid-template-columns: auto 1fr; gap: 8px 12px; margin: 0; }
+    .status-card dt { color: var(--muted); }
+    .status-card dd { margin: 0; overflow-wrap: anywhere; }
     @media (max-width: 860px) {
       .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .grid { grid-template-columns: 1fr; }
@@ -160,8 +175,16 @@ INDEX_HTML = """<!doctype html>
           <div id="watchlist" class="watchlist"></div>
         </section>
         <section class="log">
+          <h2>Mike Status</h2>
+          <div id="mikeStatus" class="status-card">Checking Mike service...</div>
+        </section>
+        <section class="log">
           <h2>Latest Run</h2>
-          <pre id="runs">Loading...</pre>
+          <div id="latestRun" class="status-card">Loading...</div>
+        </section>
+        <section class="log">
+          <h2>Latest PDF</h2>
+          <div id="latestPdf" class="status-card">No PDF analyzed yet.</div>
         </section>
       </div>
     </div>
@@ -189,17 +212,76 @@ INDEX_HTML = """<!doctype html>
         <td>${row.risk_score ?? ""}</td>
         <td>${row.summary || ""}</td>
       </tr>`).join("") || `<tr><td colspan="5">No changes logged yet.</td></tr>`;
-      const contractsText = data.contracts.length ? "\\n\\nLatest PDF: " + JSON.stringify(data.contracts[0], null, 2) : "";
-      el("runs").textContent = JSON.stringify(data.runs[0] || {}, null, 2) + contractsText;
+      
+      // Check Mike status
+      try {
+        const mikeResponse = await fetch("http://localhost:3001/health", { method: "GET", signal: AbortSignal.timeout(2000) });
+        if (mikeResponse.ok) {
+          const mikeData = await mikeResponse.json();
+          el("mikeStatus").innerHTML = `<dl><dt>Status</dt><dd>✅ Online</dd><dt>Service</dt><dd>${mikeData.service || "mike-compat"}</dd></dl>`;
+        } else {
+          el("mikeStatus").innerHTML = `<dl><dt>Status</dt><dd>❌ Offline</dd><dt>Port</dt><dd>3001</dd></dl>`;
+        }
+      } catch (error) {
+        el("mikeStatus").innerHTML = `<dl><dt>Status</dt><dd>❌ Offline</dd><dt>Error</dt><dd>${error.message}</dd></dl>`;
+      }
+      
+      const run = data.runs[0];
+      if (run) {
+        el("latestRun").innerHTML = `
+          <dl>
+            <dt>Status</dt><dd>${run.status}</dd>
+            <dt>Started</dt><dd>${run.started_at || ""}</dd>
+            <dt>Finished</dt><dd>${run.finished_at || ""}</dd>
+            <dt>Crawled</dt><dd>${run.crawled}</dd>
+            <dt>Failed</dt><dd>${run.failed}</dd>
+            <dt>Diffs</dt><dd>${run.diffs}</dd>
+            <dt>Alerts</dt><dd>${run.alerts}</dd>
+          </dl>
+        `;
+      } else {
+        el("latestRun").textContent = "No heartbeat run yet.";
+      }
+      const pdf = data.contracts[0];
+      if (pdf) {
+        const clauses = (pdf.clauses || []).map((clause) => `
+          <div class="clause-item">
+            <strong>${clause.clause || "Clause"}</strong>
+            <div class="meta">
+              <span class="severity ${clause.severity || 'REVIEW'}">${clause.severity || "REVIEW"}</span>
+              <span class="risk-points">${clause.risk_points || "n/a"} pts</span>
+              <span class="source">${pdf.source || "mike"}</span>
+            </div>
+            ${clause.before ? `<div class="before"><strong>Before:</strong> ${clause.before}</div>` : ''}
+            ${clause.after ? `<div class="after"><strong>After:</strong> ${clause.after}</div>` : ''}
+            ${clause.legal_implication ? `<div class="implication">${clause.legal_implication}</div>` : ''}
+            ${clause.page_citation ? `<div class="citation">Citation: ${clause.page_citation}</div>` : ''}
+          </div>
+        `).join("");
+        const download = pdf.report_path ? `<a class="download" href="/api/download?path=${encodeURIComponent(pdf.report_path)}">Download DOCX report</a>` : "";
+        el("latestPdf").innerHTML = `
+          <dl>
+            <dt>File</dt><dd>${pdf.filename}</dd>
+            <dt>Uploaded</dt><dd>${pdf.uploaded_at}</dd>
+            <dt>Risk</dt><dd>${pdf.severity} (${pdf.risk_score}/100)</dd>
+            <dt>Analysis Source</dt><dd>${pdf.source || "mike"}</dd>
+            <dt>Summary</dt><dd>${pdf.summary}</dd>
+          </dl>
+          ${download}
+          <div class="clause-list">${clauses}</div>
+        `;
+      } else {
+        el("latestPdf").textContent = "No PDF analyzed yet.";
+      }
     }
     el("run").onclick = async () => {
-      el("runs").textContent = "Running heartbeat...";
+      el("latestRun").textContent = "Running heartbeat...";
       try { await api("/api/run", { method: "POST" }); await refresh(); }
-      catch (error) { el("runs").textContent = error.message; }
+      catch (error) { el("latestRun").textContent = error.message; }
     };
     el("simulate").onclick = async () => {
       try { await api(`/api/simulate?service=${encodeURIComponent(el("service").value || "spotify")}`, { method: "POST" }); await refresh(); }
-      catch (error) { el("runs").textContent = error.message; }
+      catch (error) { el("latestRun").textContent = error.message; }
     };
     el("refresh").onclick = refresh;
     el("pdfForm").onsubmit = async (event) => {
@@ -213,15 +295,25 @@ INDEX_HTML = """<!doctype html>
         const result = await api("/api/upload-pdf", { method: "POST", body });
         const clauses = (result.clauses || []).map((clause) => `
           <div class="clause-item">
-            <strong>${clause.clause || "Clause"} - ${clause.severity || "REVIEW"} - ${clause.risk_points || "n/a"} pts</strong>
-            <p>${clause.after || ""}</p>
-            <p>${clause.legal_implication || ""}</p>
+            <strong>${clause.clause || "Clause"}</strong>
+            <div class="meta">
+              <span class="severity ${clause.severity || 'REVIEW'}">${clause.severity || "REVIEW"}</span>
+              <span class="risk-points">${clause.risk_points || "n/a"} pts</span>
+              <span class="source">${result.source || "mike"}</span>
+            </div>
+            ${clause.before ? `<div class="before"><strong>Before:</strong> ${clause.before}</div>` : ''}
+            ${clause.after ? `<div class="after"><strong>After:</strong> ${clause.after}</div>` : ''}
+            ${clause.legal_implication ? `<div class="implication">${clause.legal_implication}</div>` : ''}
+            ${clause.page_citation ? `<div class="citation">Citation: ${clause.page_citation}</div>` : ''}
           </div>
         `).join("");
         const download = result.download_url ? `<a class="download" href="${result.download_url}">Download DOCX report</a>` : "";
         el("uploadResult").innerHTML = `
-          Risk: ${result.severity} (${result.risk_score}/100)<br>
-          ${result.summary}<br>
+          <dl>
+            <dt>Risk</dt><dd>${result.severity} (${result.risk_score}/100)</dd>
+            <dt>Analysis Source</dt><dd>${result.source || "mike"}</dd>
+            <dt>Summary</dt><dd>${result.summary}</dd>
+          </dl>
           ${download}
           <div class="clause-list">${clauses}</div>
         `;

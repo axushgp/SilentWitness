@@ -31,19 +31,45 @@ def fallback_clauses(diff_text: str) -> list[dict[str, str]]:
     before, after = _changed_pairs(diff_text)
     implication = "The changed wording may materially alter user rights, data use, or service obligations."
     lowered = diff_text.lower()
-    if "third-party" in lowered or "third party" in lowered or "share" in lowered:
+    
+    # Enhanced analysis with more specific implications
+    risk_score = 8  # default
+    severity = "LOW"
+    
+    if any(term in lowered for term in ["third-party", "third party", "share", "transfer", "sell data"]):
         implication = "Data sharing language expanded; review consent, processor, and fiduciary obligations."
-    if "fee" in lowered or "penalty" in lowered or "charge" in lowered:
+        risk_score = 16
+        severity = "HIGH"
+    elif any(term in lowered for term in ["fee", "penalty", "charge", "fine", "cost"]):
         implication = "Financial liability language changed; check notice, consent, and opt-out paths."
-    if "ai training" in lowered or "license" in lowered or "content" in lowered:
+        risk_score = 15
+        severity = "HIGH"
+    elif any(term in lowered for term in ["ai training", "license", "content", "ip", "intellectual property"]):
         implication = "User content or IP rights may be affected by the revised clause."
+        risk_score = 14
+        severity = "MEDIUM"
+    elif any(term in lowered for term in ["privacy", "gdpr", "data protection", "consent"]):
+        implication = "Privacy or data protection terms modified; verify compliance with regulations."
+        risk_score = 13
+        severity = "MEDIUM"
+    elif any(term in lowered for term in ["terminate", "termination", "cancel", "delete account"]):
+        implication = "Account termination or service access terms changed."
+        risk_score = 12
+        severity = "MEDIUM"
+    elif any(term in lowered for term in ["liability", "responsibility", "disclaimer"]):
+        implication = "Liability or responsibility terms modified."
+        risk_score = 10
+        severity = "MEDIUM"
+    
     return [
         {
-            "clause": "Detected policy change",
+            "clause": "Policy change detected",
             "before": before or "No removed wording detected.",
             "after": after or "No added wording detected.",
             "legal_implication": implication,
             "page_citation": "Policy snapshot diff",
+            "severity": severity,
+            "risk_points": str(risk_score),
         }
     ]
 
@@ -102,6 +128,48 @@ CONTRACT_PATTERNS = [
         ("non-compete", "non compete", "non-solicit", "non solicit", "solicit employees"),
         "Restricts future business activity. Review duration, geography, and enforceability.",
         15,
+    ),
+    (
+        "Data privacy / GDPR compliance",
+        ("gdpr", "data protection", "privacy policy", "data subject", "consent", "data processing"),
+        "Addresses data protection requirements. Check compliance with privacy regulations and user rights.",
+        17,
+    ),
+    (
+        "Warranty / representation",
+        ("warrant", "represent", "warranty", "guarantee", "merchantability", "fitness for purpose"),
+        "Makes promises about quality or performance. Check limitations and exclusions.",
+        12,
+    ),
+    (
+        "Force majeure",
+        ("force majeure", "act of god", "unforeseeable", "beyond control"),
+        "Excuses performance due to uncontrollable events. Check scope and notice requirements.",
+        10,
+    ),
+    (
+        "Governing law / jurisdiction",
+        ("governing law", "jurisdiction", "applicable law", "choice of law"),
+        "Determines which country's laws apply. Check for favorable or unfavorable jurisdictions.",
+        13,
+    ),
+    (
+        "Assignment / transfer",
+        ("assign", "assignment", "transfer", "successor", "affiliate"),
+        "Controls whether rights can be transferred. Check restrictions on assignment.",
+        11,
+    ),
+    (
+        "Entire agreement / merger",
+        ("entire agreement", "integration", "merger", "amend", "modify"),
+        "Limits what constitutes the full agreement. Check for integration clauses and amendment procedures.",
+        9,
+    ),
+    (
+        "Severability",
+        ("severable", "severability", "invalid", "unenforceable", "void"),
+        "Determines what happens if part of agreement is invalid. Check for severability provisions.",
+        8,
     ),
 ]
 
